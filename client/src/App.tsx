@@ -5,13 +5,15 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { SessionProvider } from "@/contexts/SessionContext";
 import Home from "@/pages/Home";
+import Dashboard from "@/pages/Dashboard";
 import NotFound from "@/pages/not-found";
 
 function Router() {
   return (
     <Switch>
       <Route path="/" component={Home} />
-      {/* TODO: Add dashboard and protein detail pages */}
+      <Route path="/dashboard" component={Dashboard} />
+      {/* TODO: Add protein detail page */}
       {/* Fallback to 404 */}
       <Route component={NotFound} />
     </Switch>
