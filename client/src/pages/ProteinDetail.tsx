@@ -9,6 +9,8 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
+import { useEffect } from "react";
+import PTMLollipopPlot from "@/components/PTMLollipopPlot";
 
 interface ProteinWithPTMs {
   protein: {
@@ -91,6 +93,14 @@ export default function ProteinDetail() {
       });
     },
   });
+
+  // Auto-fetch sequence if protein exists but sequence is missing
+  useEffect(() => {
+    if (proteinData && !proteinData.protein.sequence && !fetchSequenceMutation.isPending) {
+      console.log(`Auto-fetching sequence for ${uniprotId}`);
+      fetchSequenceMutation.mutate();
+    }
+  }, [proteinData, uniprotId, fetchSequenceMutation]);
 
   if (!currentSession) {
     return (
@@ -222,15 +232,27 @@ export default function ProteinDetail() {
                     </Button>
                   </div>
                 ) : (
-                  <div className="text-center py-12">
-                    <h3 className="text-lg font-medium mb-2">Lollipop Plot Visualization</h3>
-                    <p className="text-muted-foreground mb-4">
-                      Interactive PTM visualization will be implemented here
-                    </p>
-                    <Badge variant="outline" className="text-green-600">
-                      Sequence Available ({protein.protein.sequenceLength} AA)
-                    </Badge>
-                  </div>
+                  <PTMLollipopPlot
+                    sequenceLength={protein.protein.sequenceLength!}
+                    ptmSites={[
+                      ...protein.experimentalPtms.map(ptm => ({
+                        siteLocation: ptm.siteLocation,
+                        modificationType: ptm.modificationType,
+                        type: 'experimental' as const,
+                        siteAA: ptm.siteAA,
+                        siteProbability: ptm.siteProbability,
+                        quantity: ptm.quantity,
+                      })),
+                      ...protein.knownPtms.map(ptm => ({
+                        siteLocation: ptm.siteLocation,
+                        modificationType: ptm.modificationType,
+                        type: 'known' as const,
+                        pubmedIds: ptm.pubmedIds,
+                      }))
+                    ]}
+                    width={800}
+                    height={300}
+                  />
                 )}
               </CardContent>
             </Card>
