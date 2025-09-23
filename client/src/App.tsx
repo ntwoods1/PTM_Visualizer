@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { SessionProvider } from "@/contexts/SessionContext";
 import Home from "@/pages/Home";
 import Dashboard from "@/pages/Dashboard";
+import ProteinDetail from "@/pages/ProteinDetail";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -13,7 +14,7 @@ function Router() {
     <Switch>
       <Route path="/" component={Home} />
       <Route path="/dashboard" component={Dashboard} />
-      {/* TODO: Add protein detail page */}
+      <Route path="/protein/:uniprotId" component={ProteinDetail} />
       {/* Fallback to 404 */}
       <Route component={NotFound} />
     </Switch>

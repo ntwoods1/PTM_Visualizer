@@ -306,7 +306,7 @@ export default function Dashboard() {
                   <TableBody>
                     {filteredProteins.map((protein) => (
                       <TableRow 
-                        key={protein.id} 
+                        key={protein.uniprotId} 
                         className="hover:bg-muted/50 cursor-pointer"
                         onClick={() => setLocation(`/protein/${protein.uniprotId}`)}
                         data-testid={`row-protein-${protein.uniprotId}`}
