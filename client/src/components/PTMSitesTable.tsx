@@ -5,7 +5,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Download, Filter, BarChart3 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Download, Filter, BarChart3, AlertTriangle } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -20,6 +21,10 @@ interface PTMSite {
   condition?: string;
   flankingRegion?: string;
   pubmedIds?: string[];
+  // Ambiguity fields
+  ambiguous?: boolean;
+  ambiguityGroupId?: string;
+  candidateUniprotIds?: string[];
 }
 
 interface ConsolidatedPTMSite extends PTMSite {
@@ -31,6 +36,9 @@ interface ConsolidatedPTMSite extends PTMSite {
     quantity: number | null; // computed from sum/count
     peptideCount: number;
   }>;
+  // Ambiguity tracking
+  isAmbiguous: boolean;
+  candidateProteins: Set<string>;
 }
 
 interface PTMSitesTableProps {
@@ -43,6 +51,7 @@ export default function PTMSitesTable({ ptmSites, proteinSequence }: PTMSitesTab
   const [selectedCondition, setSelectedCondition] = useState<string>('all');
   const [selectedModType, setSelectedModType] = useState<string>('all');
   const [selectedDataType, setSelectedDataType] = useState<string>('all');
+  const [showAmbiguous, setShowAmbiguous] = useState<boolean>(true);
 
   // Get unique values for filtering
   const conditions = Array.from(new Set(ptmSites.map(site => site.condition).filter((v): v is string => !!v)));
@@ -62,6 +71,14 @@ export default function PTMSitesTable({ ptmSites, proteinSequence }: PTMSitesTab
       existing.siteProbability = existing.siteProbability && site.siteProbability
         ? Math.max(existing.siteProbability, site.siteProbability)
         : existing.siteProbability || site.siteProbability;
+      
+      // Track ambiguity
+      if (site.ambiguous) {
+        existing.isAmbiguous = true;
+        if (site.candidateUniprotIds) {
+          site.candidateUniprotIds.forEach(id => existing.candidateProteins.add(id));
+        }
+      }
       
       // Add condition-specific quantity
       const conditionEntry = existing.conditionQuantities.find(
@@ -87,9 +104,18 @@ export default function PTMSitesTable({ ptmSites, proteinSequence }: PTMSitesTab
       }
     } else {
       const quantity = site.quantity ?? null;
+      const candidateProteins = new Set<string>();
+      const isAmbiguous = site.ambiguous || false;
+      
+      if (isAmbiguous && site.candidateUniprotIds) {
+        site.candidateUniprotIds.forEach(id => candidateProteins.add(id));
+      }
+      
       consolidatedSites.set(key, {
         ...site,
         peptideCount: 1,
+        isAmbiguous,
+        candidateProteins,
         conditionQuantities: [{
           condition: site.condition || 'Unknown',
           quantitySum: quantity ?? 0,
@@ -110,6 +136,7 @@ export default function PTMSitesTable({ ptmSites, proteinSequence }: PTMSitesTab
     }
     if (selectedModType !== 'all' && site.modificationType !== selectedModType) return false;
     if (selectedDataType !== 'all' && site.type !== selectedDataType) return false;
+    if (!showAmbiguous && site.isAmbiguous) return false;
     return true;
   }).sort((a, b) => a.siteLocation - b.siteLocation);
 
@@ -129,8 +156,8 @@ export default function PTMSitesTable({ ptmSites, proteinSequence }: PTMSitesTab
   // Export functionality
   const exportToCSV = () => {
     const headers = [
-      'Position', 'Amino Acid', 'Modification Type', 'Type', 'Conditions', 
-      'Peptide Count', 'Probability', 'Condition Quantities', 'Sequence Window', 'PubMed IDs'
+      'Position', 'Amino Acid', 'Modification Type', 'Type', 'Ambiguous', 'Candidate Proteins',
+      'Conditions', 'Peptide Count', 'Probability', 'Condition Quantities', 'Sequence Window', 'PubMed IDs'
     ];
     
     const csvData = filteredSites.map(site => [
@@ -138,6 +165,8 @@ export default function PTMSitesTable({ ptmSites, proteinSequence }: PTMSitesTab
       site.siteAA || 'N/A',
       site.modificationType,
       site.type,
+      site.isAmbiguous ? 'Yes' : 'No',
+      site.isAmbiguous ? Array.from(site.candidateProteins).join('; ') : 'N/A',
       site.conditionQuantities.map(cq => cq.condition).join('; '),
       site.peptideCount,
       site.siteProbability ? (site.siteProbability * 100).toFixed(1) + '%' : 'N/A',
@@ -244,6 +273,24 @@ export default function PTMSitesTable({ ptmSites, proteinSequence }: PTMSitesTab
             </Select>
           </div>
 
+          <div className="space-y-2">
+            <Label>Display Options</Label>
+            <div className="flex items-center space-x-2">
+              <Checkbox
+                id="show-ambiguous"
+                checked={showAmbiguous}
+                onCheckedChange={(checked) => setShowAmbiguous(checked === true)}
+                data-testid="checkbox-show-ambiguous"
+              />
+              <Label 
+                htmlFor="show-ambiguous" 
+                className="text-sm font-normal cursor-pointer"
+              >
+                Include ambiguous sites
+              </Label>
+            </div>
+          </div>
+
           <Button 
             variant="ghost" 
             size="sm"
@@ -251,6 +298,7 @@ export default function PTMSitesTable({ ptmSites, proteinSequence }: PTMSitesTab
               setSelectedCondition('all');
               setSelectedModType('all');
               setSelectedDataType('all');
+              setShowAmbiguous(true);
             }}
             data-testid="button-clear-filters"
           >
@@ -268,6 +316,8 @@ export default function PTMSitesTable({ ptmSites, proteinSequence }: PTMSitesTab
                 <TableHead className="w-16">AA</TableHead>
                 <TableHead>Modification</TableHead>
                 <TableHead className="w-20">Type</TableHead>
+                <TableHead className="w-20">Ambiguous</TableHead>
+                <TableHead className="w-32">Candidates</TableHead>
                 {conditions.length > 1 && <TableHead>Condition</TableHead>}
                 <TableHead className="w-20">Peptides</TableHead>
                 <TableHead className="w-20">Probability</TableHead>
@@ -280,7 +330,7 @@ export default function PTMSitesTable({ ptmSites, proteinSequence }: PTMSitesTab
               {filteredSites.length === 0 ? (
                 <TableRow>
                   <TableCell 
-                    colSpan={conditions.length > 1 ? 10 : 9} 
+                    colSpan={conditions.length > 1 ? 12 : 11} 
                     className="text-center py-8 text-muted-foreground"
                   >
                     No PTM sites match the current filters
@@ -305,6 +355,35 @@ export default function PTMSitesTable({ ptmSites, proteinSequence }: PTMSitesTab
                       >
                         {site.type}
                       </Badge>
+                    </TableCell>
+                    <TableCell className="text-center">
+                      {site.isAmbiguous ? (
+                        <div className="flex items-center gap-1">
+                          <AlertTriangle className="h-3 w-3 text-amber-500" />
+                          <Badge variant="outline" className="text-xs bg-amber-50 text-amber-700 border-amber-200">
+                            Yes
+                          </Badge>
+                        </div>
+                      ) : (
+                        <Badge variant="secondary" className="text-xs">
+                          No
+                        </Badge>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-xs max-w-32 truncate">
+                      {site.isAmbiguous && site.candidateProteins.size > 0 ? (
+                        <div className="space-y-1">
+                          <div className="text-xs text-muted-foreground">
+                            {site.candidateProteins.size} proteins
+                          </div>
+                          <div className="font-mono text-xs" title={Array.from(site.candidateProteins).join(', ')}>
+                            {Array.from(site.candidateProteins).slice(0, 2).join(', ')}
+                            {site.candidateProteins.size > 2 && '...'}
+                          </div>
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground">N/A</span>
+                      )}
                     </TableCell>
                     {conditions.length > 1 && (
                       <TableCell className="text-xs max-w-32 truncate">

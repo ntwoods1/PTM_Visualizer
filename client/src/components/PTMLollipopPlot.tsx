@@ -1,7 +1,9 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import * as d3 from 'd3';
 import { Button } from '@/components/ui/button';
-import { Download } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Label } from '@/components/ui/label';
+import { Download, AlertTriangle } from 'lucide-react';
 
 interface PTMSite {
   siteLocation: number;
@@ -14,6 +16,10 @@ interface PTMSite {
   condition?: string;
   flankingRegion?: string;
   peptideCount?: number; // Number of peptides supporting this site
+  // Ambiguity fields
+  ambiguous?: boolean;
+  ambiguityGroupId?: string;
+  candidateUniprotIds?: string[];
 }
 
 interface Domain {
@@ -40,9 +46,13 @@ export default function PTMLollipopPlot({
   height = 300 
 }: PTMLollipopPlotProps) {
   const svgRef = useRef<SVGSVGElement>(null);
+  const [showAmbiguous, setShowAmbiguous] = useState<boolean>(true);
 
   useEffect(() => {
     if (!svgRef.current || !sequenceLength || ptmSites.length === 0) return;
+
+    // Filter PTM sites based on ambiguity setting
+    const filteredSites = showAmbiguous ? ptmSites : ptmSites.filter(site => !site.ambiguous);
 
     const svg = d3.select(svgRef.current);
     svg.selectAll('*').remove(); // Clear previous render
@@ -60,7 +70,7 @@ export default function PTMLollipopPlot({
       .range([0, plotWidth]);
 
     const colorScale = d3.scaleOrdinal<string>()
-      .domain(Array.from(new Set(ptmSites.map(site => site.modificationType))))
+      .domain(Array.from(new Set(filteredSites.map(site => site.modificationType))))
       .range(d3.schemeCategory10);
 
     // Draw protein sequence line
@@ -176,9 +186,9 @@ export default function PTMLollipopPlot({
       .text(sequenceLength.toString());
 
     // Consolidate PTM sites by position, modification type, and type (no condition)
-    const consolidatedSites = new Map<string, PTMSite & { totalConditions: number, conditions: string[] }>();
+    const consolidatedSites = new Map<string, PTMSite & { totalConditions: number, conditions: string[], isAmbiguous: boolean, candidateProteins: Set<string> }>();
     
-    ptmSites.forEach(site => {
+    filteredSites.forEach(site => {
       const key = `${site.siteLocation}_${site.modificationType}_${site.type}`;
       const existing = consolidatedSites.get(key);
       
@@ -192,6 +202,14 @@ export default function PTMLollipopPlot({
           ? Math.max(existing.siteProbability, site.siteProbability)  // Take highest probability
           : existing.siteProbability || site.siteProbability;
         
+        // Track ambiguity
+        if (site.ambiguous) {
+          existing.isAmbiguous = true;
+          if (site.candidateUniprotIds) {
+            site.candidateUniprotIds.forEach(id => existing.candidateProteins.add(id));
+          }
+        }
+        
         // Track unique conditions - only count conditions with quantitative evidence
         if (site.condition && site.condition.trim() !== '' && site.quantity != null && isFinite(site.quantity)) {
           if (!existing.conditions.includes(site.condition)) {
@@ -202,11 +220,20 @@ export default function PTMLollipopPlot({
       } else {
         const hasQuantitativeEvidence = site.condition && site.condition.trim() !== '' && site.quantity != null && isFinite(site.quantity);
         const initialConditions: string[] = hasQuantitativeEvidence ? [site.condition!] : [];
+        const candidateProteins = new Set<string>();
+        const isAmbiguous = site.ambiguous || false;
+        
+        if (isAmbiguous && site.candidateUniprotIds) {
+          site.candidateUniprotIds.forEach(id => candidateProteins.add(id));
+        }
+        
         consolidatedSites.set(key, {
           ...site,
           peptideCount: 1,
           totalConditions: initialConditions.length,
-          conditions: initialConditions
+          conditions: initialConditions,
+          isAmbiguous,
+          candidateProteins
         });
       }
     });
@@ -240,7 +267,7 @@ export default function PTMLollipopPlot({
       const x = xScale(position);
       
       sites.forEach((site, index) => {
-        const siteWithConditions = site as PTMSite & { totalConditions: number, conditions: string[] };
+        const siteWithConditions = site as PTMSite & { totalConditions: number, conditions: string[], isAmbiguous: boolean, candidateProteins: Set<string> };
         // Base height on condition count, with stacking for multiple modifications at same position
         const conditionCount = Math.max(siteWithConditions.totalConditions || 1, 1);
         const baseHeight = heightScale(conditionCount);
@@ -248,8 +275,8 @@ export default function PTMLollipopPlot({
         const lollipopHeight = Math.min(baseHeight + stackOffset, plotHeight - 60);
         
         
-        // Draw stick
-        g.append('line')
+        // Draw stick with ambiguity styling
+        const line = g.append('line')
           .attr('x1', x)
           .attr('x2', x)
           .attr('y1', plotHeight - 40)
@@ -257,17 +284,27 @@ export default function PTMLollipopPlot({
           .attr('stroke', colorScale(site.modificationType))
           .attr('stroke-width', 2)
           .attr('opacity', site.type === 'experimental' ? 1 : 0.6);
+        
+        // Add dashed stroke for ambiguous sites
+        if (siteWithConditions.isAmbiguous) {
+          line.attr('stroke-dasharray', '4,2');
+        }
 
-        // Draw circle (lollipop head)
+        // Draw circle (lollipop head) with ambiguity styling
         const circle = g.append('circle')
           .attr('cx', x)
           .attr('cy', plotHeight - 40 - lollipopHeight)
           .attr('r', site.type === 'experimental' ? 6 : 4)
           .attr('fill', colorScale(site.modificationType))
           .attr('stroke', site.type === 'experimental' ? '#fff' : 'none')
-          .attr('stroke-width', 2)
-          .attr('opacity', site.type === 'experimental' ? 1 : 0.7)
+          .attr('stroke-width', siteWithConditions.isAmbiguous ? 3 : 2)
+          .attr('opacity', siteWithConditions.isAmbiguous ? 0.8 : (site.type === 'experimental' ? 1 : 0.7))
           .style('cursor', 'pointer');
+        
+        // Add warning pattern for ambiguous sites
+        if (siteWithConditions.isAmbiguous) {
+          circle.attr('stroke', '#f59e0b').attr('stroke-dasharray', '2,1');
+        }
 
         // Add hover interactions
         circle
@@ -278,11 +315,13 @@ export default function PTMLollipopPlot({
               .attr('r', site.type === 'experimental' ? 8 : 6)
               .attr('stroke-width', 3);
 
-            const siteWithConditions = site as PTMSite & { totalConditions: number, conditions: string[] };
+            const siteWithConditions = site as PTMSite & { totalConditions: number, conditions: string[], isAmbiguous: boolean, candidateProteins: Set<string> };
             const tooltipContent = `
               <strong>${site.modificationType}</strong><br/>
               Position: ${position}${site.siteAA ? ` (${site.siteAA})` : ''}<br/>
               Type: ${site.type}<br/>
+              ${siteWithConditions.isAmbiguous ? `<span style="color: #f59e0b;">⚠️ Ambiguous mapping</span><br/>` : ''}
+              ${siteWithConditions.isAmbiguous && siteWithConditions.candidateProteins.size > 0 ? `Candidate proteins: ${Array.from(siteWithConditions.candidateProteins).slice(0, 3).join(', ')}${siteWithConditions.candidateProteins.size > 3 ? '...' : ''}<br/>` : ''}
               ${siteWithConditions.totalConditions > 0 ? `Conditions: ${siteWithConditions.totalConditions}<br/>` : ''}
               ${site.peptideCount && site.peptideCount > 1 ? `Peptides: ${site.peptideCount}<br/>` : ''}
               ${site.siteProbability ? `Probability: ${(site.siteProbability * 100).toFixed(1)}%<br/>` : ''}
@@ -306,7 +345,7 @@ export default function PTMLollipopPlot({
               .transition()
               .duration(100)
               .attr('r', site.type === 'experimental' ? 6 : 4)
-              .attr('stroke-width', site.type === 'experimental' ? 2 : 0);
+              .attr('stroke-width', siteWithConditions.isAmbiguous ? 3 : (site.type === 'experimental' ? 2 : 0));
 
             tooltip.style('opacity', 0);
           });
@@ -385,7 +424,7 @@ export default function PTMLollipopPlot({
     return () => {
       d3.selectAll('.ptm-tooltip').remove();
     };
-  }, [sequenceLength, ptmSites, width, height]);
+  }, [sequenceLength, ptmSites, width, height, showAmbiguous]);
 
   if (!sequenceLength || ptmSites.length === 0) {
     return (
@@ -446,16 +485,33 @@ export default function PTMLollipopPlot({
     <div className="w-full">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-semibold">PTM Lollipop Plot</h3>
-        <Button
-          onClick={downloadPNG}
-          variant="outline"
-          size="sm"
-          className="flex items-center gap-2"
-          data-testid="button-download-png"
-        >
-          <Download className="h-4 w-4" />
-          Download PNG
-        </Button>
+        <div className="flex items-center gap-4">
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="show-ambiguous-lollipop"
+              checked={showAmbiguous}
+              onCheckedChange={(checked) => setShowAmbiguous(checked === true)}
+              data-testid="checkbox-show-ambiguous-lollipop"
+            />
+            <Label 
+              htmlFor="show-ambiguous-lollipop" 
+              className="text-sm font-normal cursor-pointer flex items-center gap-1"
+            >
+              <AlertTriangle className="h-3 w-3 text-amber-500" />
+              Include ambiguous sites
+            </Label>
+          </div>
+          <Button
+            onClick={downloadPNG}
+            variant="outline"
+            size="sm"
+            className="flex items-center gap-2"
+            data-testid="button-download-png"
+          >
+            <Download className="h-4 w-4" />
+            Download PNG
+          </Button>
+        </div>
       </div>
       
       <svg
