@@ -41,19 +41,19 @@ export default function ProteinDetail() {
 
   // Fetch protein details
   const { data: proteinData, isLoading, error } = useQuery<ProteinWithPTMs>({
-    queryKey: ['protein-detail', uniprotId, currentSession?.id],
-    queryFn: () => apiRequest(`/api/sessions/${currentSession?.id}/proteins/${uniprotId}`),
+    queryKey: ['/api/sessions', currentSession?.id, 'proteins', uniprotId],
     enabled: !!currentSession && !!uniprotId,
   });
 
   // Fetch sequence mutation
   const fetchSequenceMutation = useMutation({
     mutationFn: () => 
-      apiRequest(`/api/proteins/${uniprotId}/fetch-sequence`, 'POST', {
+      apiRequest('POST', `/api/proteins/${uniprotId}/fetch-sequence`, {
         sessionId: currentSession?.id
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['protein-detail', uniprotId] });
+      queryClient.invalidateQueries({ queryKey: ['/api/sessions', currentSession?.id, 'proteins', uniprotId] });
+      queryClient.invalidateQueries({ queryKey: ['/api/sessions', currentSession?.id, 'proteins'] });
       toast({
         title: "Success",
         description: "Protein sequence fetched from UniProt successfully",
@@ -71,11 +71,13 @@ export default function ProteinDetail() {
   // Fetch known PTMs mutation
   const fetchKnownPtmsMutation = useMutation({
     mutationFn: () => 
-      apiRequest(`/api/proteins/${uniprotId}/fetch-known-ptms`, 'POST', {
+      apiRequest('POST', `/api/proteins/${uniprotId}/fetch-known-ptms`, {
         sessionId: currentSession?.id
       }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['protein-detail', uniprotId] });
+      queryClient.invalidateQueries({ queryKey: ['/api/sessions', currentSession?.id, 'proteins', uniprotId] });
+      queryClient.invalidateQueries({ queryKey: ['/api/sessions', currentSession?.id, 'proteins'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/sessions', currentSession?.id, 'ptm-summary'] });
       toast({
         title: "Success",
         description: "Known PTMs fetched from PhosphoSitePlus successfully",
