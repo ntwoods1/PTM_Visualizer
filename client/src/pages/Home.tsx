@@ -9,11 +9,17 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Badge } from '@/components/ui/badge';
 import { useSession } from '@/contexts/SessionContext';
 import { FileUpload } from '@/components/FileUpload';
+import { useQuery } from '@tanstack/react-query';
 
 export default function Home() {
   const [newSessionName, setNewSessionName] = useState('');
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const { currentSession, createSession } = useSession();
+
+  const { data: ptmSummary } = useQuery<Array<{ modificationType: string; count: number }>>({
+    queryKey: [`/api/sessions/${currentSession?.id}/ptm-summary`],
+    enabled: !!currentSession?.id && (currentSession?.totalPtmSites ?? 0) > 0,
+  });
 
   const handleCreateSession = async () => {
     if (newSessionName.trim()) {
@@ -142,10 +148,25 @@ export default function Home() {
                       <p className="text-sm text-muted-foreground">Upload Date</p>
                     </div>
                     <div className="text-center p-4 bg-orange-50 dark:bg-orange-950/20 rounded-lg">
-                      <p className="text-2xl font-bold text-orange-600">
-                        {currentSession.fileName || 'N/A'}
-                      </p>
-                      <p className="text-sm text-muted-foreground">File Name</p>
+                      <div className="text-lg font-bold text-orange-600" data-testid="text-ptm-types">
+                        {ptmSummary && ptmSummary.length > 0 ? (
+                          <div className="space-y-1">
+                            {ptmSummary.slice(0, 3).map((ptm) => (
+                              <div key={ptm.modificationType} className="text-sm">
+                                {ptm.modificationType}: {ptm.count}
+                              </div>
+                            ))}
+                            {ptmSummary.length > 3 && (
+                              <div className="text-xs text-orange-500">
+                                +{ptmSummary.length - 3} more
+                              </div>
+                            )}
+                          </div>
+                        ) : (
+                          <span className="text-base">No PTMs</span>
+                        )}
+                      </div>
+                      <p className="text-sm text-muted-foreground">PTM Types</p>
                     </div>
                   </div>
                 </CardContent>
