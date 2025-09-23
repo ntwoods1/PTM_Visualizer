@@ -177,6 +177,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       await storage.updateAnalysisSessionStats(sessionId, proteinIds.size, processedSites);
       await storage.updateAnalysisSessionStatus(sessionId, "completed");
 
+      console.log(`[DEBUG] Upload completed - Session: ${sessionId}, Proteins: ${proteinIds.size}, PTM Sites: ${processedSites}`);
+      
+      // Debug: Check what's actually stored
+      const storedProteins = await storage.getProteinsBySession(sessionId);
+      const storedPtms = await storage.getPTMSitesBySession(sessionId);
+      console.log(`[DEBUG] Actually stored - Proteins: ${storedProteins.length}, PTM Sites: ${storedPtms.length}`);
+
       res.json({
         success: true,
         processed: {

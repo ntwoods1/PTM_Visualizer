@@ -270,14 +270,70 @@ export class MemStorage implements IStorage {
   }
 
   async getProteinsInSession(sessionId: string): Promise<ProteinWithPTMs[]> {
+    console.log(`[DEBUG Storage] Getting proteins for session: ${sessionId}`);
     const proteins = await this.getProteinsBySession(sessionId);
-    const result: ProteinWithPTMs[] = [];
+    console.log(`[DEBUG Storage] Found ${proteins.length} proteins in session`);
     
+    // Get all PTM sites for this session at once
+    const allSessionPtms = await this.getPTMSitesBySession(sessionId);
+    console.log(`[DEBUG Storage] Found ${allSessionPtms.length} total PTM sites in session`);
+    
+    // Pre-group experimental PTMs by uniprotId (O(S) operation)
+    const experimentalPtmsByProtein = new Map<string, typeof allSessionPtms>();
+    for (const ptm of allSessionPtms) {
+      const existing = experimentalPtmsByProtein.get(ptm.uniprotId) || [];
+      existing.push(ptm);
+      experimentalPtmsByProtein.set(ptm.uniprotId, existing);
+    }
+    console.log(`[DEBUG Storage] Grouped experimental PTMs for ${experimentalPtmsByProtein.size} proteins`);
+    
+    // Pre-group known PTMs by uniprotId (O(K) operation where K = known PTMs)
+    const knownPtmsByProtein = new Map<string, ReturnType<typeof this.getKnownPTMsByProtein>>();
+    const uniqueUniprotIds = new Set(proteins.map(p => p.uniprotId));
+    for (const uniprotId of uniqueUniprotIds) {
+      const knownPtms = await this.getKnownPTMsByProtein(uniprotId);
+      knownPtmsByProtein.set(uniprotId, knownPtms);
+    }
+    console.log(`[DEBUG Storage] Pre-fetched known PTMs for ${knownPtmsByProtein.size} unique proteins`);
+    
+    // Now assemble results in O(P) time - no nested filtering!
+    const result: ProteinWithPTMs[] = [];
     for (const protein of proteins) {
-      const proteinWithPtms = await this.getProteinWithPTMs(protein.uniprotId, sessionId);
-      if (proteinWithPtms) result.push(proteinWithPtms);
+      try {
+        const experimentalPtms = experimentalPtmsByProtein.get(protein.uniprotId) || [];
+        const knownPtms = knownPtmsByProtein.get(protein.uniprotId) || [];
+        
+        const proteinWithPtms: ProteinWithPTMs = {
+          protein: {
+            uniprotId: protein.uniprotId,
+            proteinName: protein.proteinName || undefined,
+            geneName: protein.geneName || undefined,
+            sequence: protein.sequence || undefined,
+            sequenceLength: protein.sequenceLength || undefined,
+          },
+          experimentalPtms: experimentalPtms.map(ptm => ({
+            siteLocation: ptm.siteLocation,
+            siteAA: ptm.siteAA,
+            modificationType: ptm.modificationType,
+            siteProbability: ptm.siteProbability,
+            quantity: ptm.quantity || undefined,
+            flankingRegion: ptm.flankingRegion || undefined,
+          })),
+          knownPtms: knownPtms.map(ptm => ({
+            siteLocation: ptm.siteLocation,
+            modificationType: ptm.modificationType,
+            pubmedIds: ptm.pubmedIds || undefined,
+            isDirectSite: ptm.isDirectSite || undefined,
+          })),
+        };
+        
+        result.push(proteinWithPtms);
+      } catch (error) {
+        console.error(`[DEBUG Storage] Error processing protein ${protein.uniprotId}:`, error);
+      }
     }
     
+    console.log(`[DEBUG Storage] Returning ${result.length} proteins with PTMs`);
     return result;
   }
 
