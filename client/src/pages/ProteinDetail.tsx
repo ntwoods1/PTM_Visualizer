@@ -7,11 +7,21 @@ import { ArrowLeft, Download, RefreshCw, AlertCircle } from "lucide-react";
 import { useSession } from "@/contexts/SessionContext";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import PTMLollipopPlot from "@/components/PTMLollipopPlot";
 import PTMSitesTable from "@/components/PTMSitesTable";
+
+interface Domain {
+  type: string;
+  description: string;
+  start: number;
+  end: number;
+  length?: number;
+}
 
 interface ProteinWithPTMs {
   protein: {
@@ -20,6 +30,7 @@ interface ProteinWithPTMs {
     geneName?: string;
     sequence?: string;
     sequenceLength?: number;
+    domains?: Domain[];
   };
   experimentalPtms: Array<{
     siteLocation: number;
@@ -42,6 +53,12 @@ export default function ProteinDetail() {
   const { uniprotId } = useParams<{ uniprotId: string }>();
   const { currentSession } = useSession();
   const { toast } = useToast();
+  
+  // PTM filtering state
+  const [showOxidation, setShowOxidation] = useState(true);
+  const [showCarbamidomethyl, setShowCarbamidomethyl] = useState(true);
+  const [showPhospho, setShowPhospho] = useState(true);
+  const [showOther, setShowOther] = useState(true);
 
   // Fetch protein details
   const { data: proteinData, isLoading, error } = useQuery<ProteinWithPTMs>({
@@ -234,30 +251,95 @@ export default function ProteinDetail() {
                     </Button>
                   </div>
                 ) : (
-                  <PTMLollipopPlot
-                    sequenceLength={protein.protein.sequenceLength!}
-                    domains={protein.protein.domains}
-                    ptmSites={[
-                      ...protein.experimentalPtms.map(ptm => ({
-                        siteLocation: ptm.siteLocation,
-                        modificationType: ptm.modificationType,
-                        type: 'experimental' as const,
-                        siteAA: ptm.siteAA,
-                        siteProbability: ptm.siteProbability,
-                        quantity: ptm.quantity,
-                        condition: ptm.condition,
-                        flankingRegion: ptm.flankingRegion,
-                      })),
-                      ...protein.knownPtms.map(ptm => ({
-                        siteLocation: ptm.siteLocation,
-                        modificationType: ptm.modificationType,
-                        type: 'known' as const,
-                        pubmedIds: ptm.pubmedIds,
-                      }))
-                    ]}
-                    width={800}
-                    height={300}
-                  />
+                  <div>
+                    {/* PTM Filtering Controls */}
+                    <div className="mb-4 p-4 bg-muted/20 rounded-lg">
+                      <h3 className="text-sm font-semibold mb-3">PTM Type Filters</h3>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div className="flex items-center space-x-2">
+                          <Checkbox
+                            id="oxidation"
+                            checked={showOxidation}
+                            onCheckedChange={setShowOxidation}
+                            data-testid="checkbox-oxidation"
+                          />
+                          <Label htmlFor="oxidation" className="text-sm">Oxidation (M)</Label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <Checkbox
+                            id="carbamidomethyl"
+                            checked={showCarbamidomethyl}
+                            onCheckedChange={setShowCarbamidomethyl}
+                            data-testid="checkbox-carbamidomethyl"
+                          />
+                          <Label htmlFor="carbamidomethyl" className="text-sm">Carbamidomethyl (C)</Label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <Checkbox
+                            id="phospho"
+                            checked={showPhospho}
+                            onCheckedChange={setShowPhospho}
+                            data-testid="checkbox-phospho"
+                          />
+                          <Label htmlFor="phospho" className="text-sm">Phospho (STY)</Label>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <Checkbox
+                            id="other"
+                            checked={showOther}
+                            onCheckedChange={setShowOther}
+                            data-testid="checkbox-other"
+                          />
+                          <Label htmlFor="other" className="text-sm">Other PTMs</Label>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <PTMLollipopPlot
+                      sequenceLength={protein.protein.sequenceLength!}
+                      domains={protein.protein.domains}
+                      ptmSites={[
+                        ...protein.experimentalPtms
+                          .filter(ptm => {
+                            if (ptm.modificationType.includes('Oxidation (M)') && !showOxidation) return false;
+                            if (ptm.modificationType.includes('Carbamidomethyl (C)') && !showCarbamidomethyl) return false;
+                            if (ptm.modificationType.includes('Phospho (STY)') && !showPhospho) return false;
+                            if (!ptm.modificationType.includes('Oxidation (M)') && 
+                                !ptm.modificationType.includes('Carbamidomethyl (C)') && 
+                                !ptm.modificationType.includes('Phospho (STY)') && !showOther) return false;
+                            return true;
+                          })
+                          .map(ptm => ({
+                            siteLocation: ptm.siteLocation,
+                            modificationType: ptm.modificationType,
+                            type: 'experimental' as const,
+                            siteAA: ptm.siteAA,
+                            siteProbability: ptm.siteProbability,
+                            quantity: ptm.quantity,
+                            condition: ptm.condition,
+                            flankingRegion: ptm.flankingRegion,
+                          })),
+                        ...protein.knownPtms
+                          .filter(ptm => {
+                            if (ptm.modificationType.includes('Oxidation (M)') && !showOxidation) return false;
+                            if (ptm.modificationType.includes('Carbamidomethyl (C)') && !showCarbamidomethyl) return false;
+                            if (ptm.modificationType.includes('Phospho (STY)') && !showPhospho) return false;
+                            if (!ptm.modificationType.includes('Oxidation (M)') && 
+                                !ptm.modificationType.includes('Carbamidomethyl (C)') && 
+                                !ptm.modificationType.includes('Phospho (STY)') && !showOther) return false;
+                            return true;
+                          })
+                          .map(ptm => ({
+                            siteLocation: ptm.siteLocation,
+                            modificationType: ptm.modificationType,
+                            type: 'known' as const,
+                            pubmedIds: ptm.pubmedIds,
+                          }))
+                      ]}
+                      width={800}
+                      height={300}
+                    />
+                  </div>
                 )}
               </CardContent>
             </Card>

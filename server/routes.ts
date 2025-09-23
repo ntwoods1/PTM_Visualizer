@@ -240,16 +240,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
           
           // Extract domain information from UniProt features
           const features = metadata.features || [];
+          console.log(`[DEBUG] Features for ${uniprotId}:`, features.length, 'total features');
+          console.log(`[DEBUG] Feature types:`, features.map((f: any) => f.type).slice(0, 10));
+          
           const domains = features
-            .filter((feature: any) => feature.type === 'DOMAIN')
+            .filter((feature: any) => {
+              // Check multiple domain-related types
+              const domainTypes = ['DOMAIN', 'Domain', 'REGION', 'Region'];
+              return domainTypes.includes(feature.type) || 
+                     (feature.description && feature.description.toLowerCase().includes('domain'));
+            })
             .map((domain: any) => ({
               type: domain.type,
               description: domain.description || 'Unknown domain',
-              start: domain.begin?.value || 0,
-              end: domain.end?.value || 0,
-              length: (domain.end?.value || 0) - (domain.begin?.value || 0) + 1
+              start: domain.location?.start?.value || domain.begin?.value || 0,
+              end: domain.location?.end?.value || domain.end?.value || 0,
+              length: ((domain.location?.end?.value || domain.end?.value || 0) - 
+                      (domain.location?.start?.value || domain.begin?.value || 0)) + 1
             }))
             .filter((domain: any) => domain.start > 0 && domain.end > 0); // Only valid domains
+          
+          console.log(`[DEBUG] Domain features found:`, domains);
           
           // Update protein with domain information
           if (domains.length > 0) {
