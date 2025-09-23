@@ -1,5 +1,7 @@
 import { useEffect, useRef } from 'react';
 import * as d3 from 'd3';
+import { Button } from '@/components/ui/button';
+import { Download } from 'lucide-react';
 
 interface PTMSite {
   siteLocation: number;
@@ -199,7 +201,7 @@ export default function PTMLollipopPlot({
         }
       } else {
         const hasQuantitativeEvidence = site.condition && site.condition.trim() !== '' && site.quantity != null && isFinite(site.quantity);
-        const initialConditions = hasQuantitativeEvidence ? [site.condition] : [];
+        const initialConditions: string[] = hasQuantitativeEvidence ? [site.condition!] : [];
         consolidatedSites.set(key, {
           ...site,
           peptideCount: 1,
@@ -398,8 +400,64 @@ export default function PTMLollipopPlot({
     );
   }
 
+  const downloadPNG = () => {
+    if (!svgRef.current) return;
+    
+    const svg = svgRef.current;
+    const svgData = new XMLSerializer().serializeToString(svg);
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    
+    if (!ctx) return;
+    
+    canvas.width = width;
+    canvas.height = height;
+    
+    const img = new Image();
+    const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(svgBlob);
+    
+    img.onload = () => {
+      // Fill white background
+      ctx.fillStyle = 'white';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      
+      // Draw the SVG
+      ctx.drawImage(img, 0, 0);
+      
+      // Convert to PNG and download
+      canvas.toBlob((blob) => {
+        if (blob) {
+          const link = document.createElement('a');
+          link.download = 'ptm-lollipop-plot.png';
+          link.href = URL.createObjectURL(blob);
+          link.click();
+          URL.revokeObjectURL(link.href);
+        }
+      }, 'image/png');
+      
+      URL.revokeObjectURL(url);
+    };
+    
+    img.src = url;
+  };
+  
   return (
     <div className="w-full">
+      <div className="flex items-center justify-between mb-4">
+        <h3 className="text-lg font-semibold">PTM Lollipop Plot</h3>
+        <Button
+          onClick={downloadPNG}
+          variant="outline"
+          size="sm"
+          className="flex items-center gap-2"
+          data-testid="button-download-png"
+        >
+          <Download className="h-4 w-4" />
+          Download PNG
+        </Button>
+      </div>
+      
       <svg
         ref={svgRef}
         width={width}
@@ -407,10 +465,11 @@ export default function PTMLollipopPlot({
         className="border rounded-lg bg-white"
         data-testid="ptm-lollipop-plot"
       />
+      
       <div className="mt-4 text-sm text-muted-foreground">
         <p>
           Interactive PTM visualization showing {ptmSites.length} modification sites across {sequenceLength} amino acids.
-          Hover over circles for details.
+          Hover over circles for details. Lollipop height reflects number of conditions with quantitative evidence.
         </p>
       </div>
     </div>
