@@ -30,6 +30,7 @@ export const proteins = pgTable("proteins", {
   sequence: text("sequence"), // Full amino acid sequence
   sequenceLength: integer("sequence_length"), // Length of protein
   description: text("description"), // Protein function/description
+  domains: text("domains").array(), // JSON array of domain objects
   lastUpdated: text("last_updated"), // When fetched from UniProt
 });
 
@@ -88,6 +89,16 @@ export type InsertKnownPTM = z.infer<typeof insertKnownPtmSchema>;
 export type AnalysisSession = typeof analysisSessions.$inferSelect;
 export type InsertAnalysisSession = z.infer<typeof insertAnalysisSessionSchema>;
 
+// Domain information structure
+export const domainSchema = z.object({
+  type: z.string(),
+  description: z.string(),
+  start: z.number(),
+  end: z.number(),
+  length: z.number().optional(),
+});
+export type Domain = z.infer<typeof domainSchema>;
+
 // Combined data types for visualization
 export const ProteinWithPTMs = z.object({
   protein: z.object({
@@ -96,6 +107,7 @@ export const ProteinWithPTMs = z.object({
     geneName: z.string().optional(),
     sequence: z.string().optional(),
     sequenceLength: z.number().optional(),
+    domains: z.array(domainSchema).optional(),
   }),
   experimentalPtms: z.array(z.object({
     siteLocation: z.number(),

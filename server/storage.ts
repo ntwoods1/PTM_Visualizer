@@ -107,6 +107,7 @@ export class MemStorage implements IStorage {
       sequence: insertProtein.sequence ?? null,
       sequenceLength: insertProtein.sequenceLength ?? null,
       description: insertProtein.description ?? null,
+      domains: insertProtein.domains ?? null,
       lastUpdated: insertProtein.lastUpdated ?? null,
     };
     const key = `${protein.sessionId}_${protein.uniprotId}`;
@@ -134,6 +135,16 @@ export class MemStorage implements IStorage {
     if (protein) {
       protein.sequence = sequence;
       protein.sequenceLength = length;
+      protein.lastUpdated = new Date().toISOString();
+      this.proteins.set(key, protein);
+    }
+  }
+
+  async updateProteinDomains(uniprotId: string, sessionId: string, domains: any[]): Promise<void> {
+    const key = `${sessionId}_${uniprotId}`;
+    const protein = this.proteins.get(key);
+    if (protein) {
+      protein.domains = domains.map(domain => JSON.stringify(domain));
       protein.lastUpdated = new Date().toISOString();
       this.proteins.set(key, protein);
     }
@@ -251,6 +262,7 @@ export class MemStorage implements IStorage {
         geneName: protein.geneName || undefined,
         sequence: protein.sequence || undefined,
         sequenceLength: protein.sequenceLength || undefined,
+        domains: protein.domains ? protein.domains.map(d => JSON.parse(d)) : undefined,
       },
       experimentalPtms: experimentalPtms.map(ptm => ({
         siteLocation: ptm.siteLocation,
@@ -289,8 +301,8 @@ export class MemStorage implements IStorage {
     console.log(`[DEBUG Storage] Grouped experimental PTMs for ${experimentalPtmsByProtein.size} proteins`);
     
     // Pre-group known PTMs by uniprotId (O(K) operation where K = known PTMs)
-    const knownPtmsByProtein = new Map<string, ReturnType<typeof this.getKnownPTMsByProtein>>();
-    const uniqueUniprotIds = new Set(proteins.map(p => p.uniprotId));
+    const knownPtmsByProtein = new Map<string, KnownPTM[]>();
+    const uniqueUniprotIds = Array.from(new Set(proteins.map(p => p.uniprotId)));
     for (const uniprotId of uniqueUniprotIds) {
       const knownPtms = await this.getKnownPTMsByProtein(uniprotId);
       knownPtmsByProtein.set(uniprotId, knownPtms);
@@ -311,6 +323,7 @@ export class MemStorage implements IStorage {
             geneName: protein.geneName || undefined,
             sequence: protein.sequence || undefined,
             sequenceLength: protein.sequenceLength || undefined,
+            domains: protein.domains ? protein.domains.map(d => JSON.parse(d)) : undefined,
           },
           experimentalPtms: experimentalPtms.map(ptm => ({
             siteLocation: ptm.siteLocation,
@@ -321,7 +334,7 @@ export class MemStorage implements IStorage {
             flankingRegion: ptm.flankingRegion || undefined,
             condition: ptm.condition || undefined,
           })),
-          knownPtms: knownPtms.map(ptm => ({
+          knownPtms: knownPtms.map((ptm: KnownPTM) => ({
             siteLocation: ptm.siteLocation,
             modificationType: ptm.modificationType,
             pubmedIds: ptm.pubmedIds || undefined,

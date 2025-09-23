@@ -236,6 +236,7 @@ export default function ProteinDetail() {
                 ) : (
                   <PTMLollipopPlot
                     sequenceLength={protein.protein.sequenceLength!}
+                    domains={protein.protein.domains}
                     ptmSites={[
                       ...protein.experimentalPtms.map(ptm => ({
                         siteLocation: ptm.siteLocation,

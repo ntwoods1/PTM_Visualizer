@@ -232,14 +232,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (sequence) {
         await storage.updateProteinSequence(uniprotId, sessionId, sequence, sequence.length);
         
-        // Also fetch additional metadata
+        // Also fetch additional metadata including domains
         try {
           const metadataUrl = `${UNIPROT_BASE_URL}/uniprotkb/${uniprotId}.json`;
           const metadataResponse = await axios.get(metadataUrl, { timeout: 10000 });
           const metadata = metadataResponse.data;
           
-          // Extract additional info (this would need to be implemented based on UniProt JSON structure)
-          // For now, just return the sequence
+          // Extract domain information from UniProt features
+          const features = metadata.features || [];
+          const domains = features
+            .filter((feature: any) => feature.type === 'DOMAIN')
+            .map((domain: any) => ({
+              type: domain.type,
+              description: domain.description || 'Unknown domain',
+              start: domain.begin?.value || 0,
+              end: domain.end?.value || 0,
+              length: (domain.end?.value || 0) - (domain.begin?.value || 0) + 1
+            }))
+            .filter((domain: any) => domain.start > 0 && domain.end > 0); // Only valid domains
+          
+          // Update protein with domain information
+          if (domains.length > 0) {
+            await storage.updateProteinDomains(uniprotId, sessionId, domains);
+          }
+          
+          console.log(`[DEBUG] Extracted ${domains.length} domains for ${uniprotId}`);
         } catch (metaError) {
           console.warn("Failed to fetch metadata for", uniprotId, metaError);
         }

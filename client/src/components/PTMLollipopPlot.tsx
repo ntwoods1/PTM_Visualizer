@@ -14,9 +14,18 @@ interface PTMSite {
   peptideCount?: number; // Number of peptides supporting this site
 }
 
+interface Domain {
+  type: string;
+  description: string;
+  start: number;
+  end: number;
+  length?: number;
+}
+
 interface PTMLollipopPlotProps {
   sequenceLength: number;
   ptmSites: PTMSite[];
+  domains?: Domain[];
   width?: number;
   height?: number;
 }
@@ -24,6 +33,7 @@ interface PTMLollipopPlotProps {
 export default function PTMLollipopPlot({ 
   sequenceLength, 
   ptmSites, 
+  domains = [],
   width = 800, 
   height = 300 
 }: PTMLollipopPlotProps) {
@@ -60,6 +70,72 @@ export default function PTMLollipopPlot({
       .attr('stroke', '#666')
       .attr('stroke-width', 4)
       .attr('opacity', 0.7);
+
+    // Draw protein domains as boxes on the sequence line
+    if (domains && domains.length > 0) {
+      const domainColorScale = d3.scaleOrdinal<string>()
+        .domain(domains.map(d => d.type))
+        .range(['#e6f3ff', '#ccebff', '#99d6ff', '#66c2ff', '#33adff', '#0099ff']);
+
+      domains.forEach((domain, index) => {
+        const domainStart = xScale(domain.start);
+        const domainEnd = xScale(domain.end);
+        const domainWidth = domainEnd - domainStart;
+        
+        if (domainWidth > 2) { // Only draw if domain is wide enough to see
+          // Draw domain box
+          g.append('rect')
+            .attr('x', domainStart)
+            .attr('y', plotHeight - 48)
+            .attr('width', domainWidth)
+            .attr('height', 16)
+            .attr('fill', domainColorScale(domain.type))
+            .attr('stroke', '#4a90e2')
+            .attr('stroke-width', 1)
+            .attr('opacity', 0.7)
+            .style('cursor', 'pointer')
+            .on('mouseover', function(event) {
+              d3.select(this).attr('opacity', 1);
+              
+              const domainTooltip = d3.select('body').append('div')
+                .attr('class', 'domain-tooltip')
+                .style('position', 'absolute')
+                .style('background', 'rgba(0, 0, 0, 0.9)')
+                .style('color', 'white')
+                .style('padding', '8px')
+                .style('border-radius', '4px')
+                .style('font-size', '12px')
+                .style('pointer-events', 'none')
+                .style('z-index', 1001)
+                .html(`<strong>${domain.description}</strong><br/>Position: ${domain.start}-${domain.end}<br/>Length: ${domain.end - domain.start + 1} aa`)
+                .style('left', (event.pageX + 10) + 'px')
+                .style('top', (event.pageY - 10) + 'px');
+            })
+            .on('mousemove', function(event) {
+              d3.selectAll('.domain-tooltip')
+                .style('left', (event.pageX + 10) + 'px')
+                .style('top', (event.pageY - 10) + 'px');
+            })
+            .on('mouseout', function() {
+              d3.select(this).attr('opacity', 0.7);
+              d3.selectAll('.domain-tooltip').remove();
+            });
+          
+          // Add domain label if there's enough space
+          if (domainWidth > 60) {
+            g.append('text')
+              .attr('x', domainStart + domainWidth / 2)
+              .attr('y', plotHeight - 40)
+              .attr('text-anchor', 'middle')
+              .attr('font-size', '10px')
+              .attr('font-weight', 'bold')
+              .attr('fill', '#2563eb')
+              .attr('pointer-events', 'none')
+              .text(domain.description.length > 12 ? domain.description.substring(0, 12) + '...' : domain.description);
+          }
+        }
+      });
+    }
 
     // Add sequence length labels
     g.append('text')
