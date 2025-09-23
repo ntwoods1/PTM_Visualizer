@@ -9,6 +9,9 @@ interface PTMSite {
   siteProbability?: number;
   quantity?: number;
   pubmedIds?: string[];
+  condition?: string;
+  flankingRegion?: string;
+  peptideCount?: number; // Number of peptides supporting this site
 }
 
 interface PTMLollipopPlotProps {
@@ -75,8 +78,32 @@ export default function PTMLollipopPlot({
       .attr('fill', '#666')
       .text(sequenceLength.toString());
 
-    // Group PTM sites by position to handle overlaps
-    const groupedSites = d3.group(ptmSites, d => d.siteLocation);
+    // Consolidate PTM sites by position, modification type, and condition
+    const consolidatedSites = new Map<string, PTMSite>();
+    
+    ptmSites.forEach(site => {
+      const key = `${site.siteLocation}_${site.modificationType}_${site.condition || 'unknown'}_${site.type}`;
+      const existing = consolidatedSites.get(key);
+      
+      if (existing) {
+        // Merge data from multiple peptides
+        existing.peptideCount = (existing.peptideCount || 1) + 1;
+        existing.quantity = existing.quantity && site.quantity 
+          ? (existing.quantity + site.quantity) / 2  // Average quantities
+          : existing.quantity || site.quantity;
+        existing.siteProbability = existing.siteProbability && site.siteProbability
+          ? Math.max(existing.siteProbability, site.siteProbability)  // Take highest probability
+          : existing.siteProbability || site.siteProbability;
+      } else {
+        consolidatedSites.set(key, {
+          ...site,
+          peptideCount: 1
+        });
+      }
+    });
+
+    // Group consolidated sites by position for visualization
+    const groupedSites = d3.group(Array.from(consolidatedSites.values()), d => d.siteLocation);
 
     // Create tooltip
     const tooltip = d3.select('body').append('div')
@@ -133,6 +160,8 @@ export default function PTMLollipopPlot({
               <strong>${site.modificationType}</strong><br/>
               Position: ${position}${site.siteAA ? ` (${site.siteAA})` : ''}<br/>
               Type: ${site.type}<br/>
+              ${site.condition ? `Condition: ${site.condition}<br/>` : ''}
+              ${site.peptideCount && site.peptideCount > 1 ? `Peptides: ${site.peptideCount}<br/>` : ''}
               ${site.siteProbability ? `Probability: ${(site.siteProbability * 100).toFixed(1)}%<br/>` : ''}
               ${site.quantity ? `Quantity: ${site.quantity.toFixed(2)}<br/>` : ''}
               ${site.pubmedIds && site.pubmedIds.length > 0 ? `PubMed IDs: ${site.pubmedIds.slice(0, 3).join(', ')}${site.pubmedIds.length > 3 ? '...' : ''}` : ''}
@@ -161,9 +190,9 @@ export default function PTMLollipopPlot({
       });
     });
 
-    // Add legend
+    // Add modification type legend
     const legend = g.append('g')
-      .attr('transform', `translate(${plotWidth - 200}, 20)`);
+      .attr('transform', `translate(${plotWidth - 220}, 20)`);
 
     const legendData = Array.from(new Set(ptmSites.map(site => site.modificationType)));
     
@@ -191,9 +220,34 @@ export default function PTMLollipopPlot({
           .text(d);
       });
 
-    // Add type legend
+    // Add data type legend
     const typeLegend = g.append('g')
       .attr('transform', `translate(20, 20)`);
+
+    // Add condition legend if multiple conditions exist
+    const conditions = Array.from(new Set(ptmSites.map(site => site.condition).filter(Boolean)));
+    if (conditions.length > 1) {
+      const conditionLegend = g.append('g')
+        .attr('transform', `translate(20, 70)`);
+      
+      conditionLegend.append('text')
+        .attr('x', 0)
+        .attr('y', -5)
+        .attr('font-size', '12px')
+        .attr('font-weight', 'bold')
+        .attr('fill', '#333')
+        .text('Conditions:');
+      
+      conditionLegend.selectAll('.condition-legend-item')
+        .data(conditions.slice(0, 5)) // Show first 5 conditions
+        .enter()
+        .append('text')
+        .attr('x', 0)
+        .attr('y', (d, i) => (i + 1) * 15)
+        .attr('font-size', '10px')
+        .attr('fill', '#666')
+        .text(d => d.length > 20 ? d.substring(0, 20) + '...' : d);
+    }
 
     const typeData = [
       { type: 'experimental', label: 'Experimental PTMs', r: 6, opacity: 1 },

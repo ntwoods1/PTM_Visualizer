@@ -11,6 +11,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 import { useEffect } from "react";
 import PTMLollipopPlot from "@/components/PTMLollipopPlot";
+import PTMSitesTable from "@/components/PTMSitesTable";
 
 interface ProteinWithPTMs {
   protein: {
@@ -27,6 +28,7 @@ interface ProteinWithPTMs {
     siteProbability?: number;
     quantity?: number;
     flankingRegion?: string;
+    condition?: string;
   }>;
   knownPtms: Array<{
     siteLocation: number;
@@ -242,6 +244,8 @@ export default function ProteinDetail() {
                         siteAA: ptm.siteAA,
                         siteProbability: ptm.siteProbability,
                         quantity: ptm.quantity,
+                        condition: ptm.condition,
+                        flankingRegion: ptm.flankingRegion,
                       })),
                       ...protein.knownPtms.map(ptm => ({
                         siteLocation: ptm.siteLocation,
@@ -388,6 +392,33 @@ export default function ProteinDetail() {
             </Card>
           </div>
         </div>
+
+        {/* PTM Sites Table */}
+        {protein.protein.sequence && (
+          <div className="mt-8">
+            <PTMSitesTable
+              ptmSites={[
+                ...protein.experimentalPtms.map(ptm => ({
+                  siteLocation: ptm.siteLocation,
+                  modificationType: ptm.modificationType,
+                  type: 'experimental' as const,
+                  siteAA: ptm.siteAA,
+                  siteProbability: ptm.siteProbability,
+                  quantity: ptm.quantity,
+                  condition: ptm.condition,
+                  flankingRegion: ptm.flankingRegion,
+                })),
+                ...protein.knownPtms.map(ptm => ({
+                  siteLocation: ptm.siteLocation,
+                  modificationType: ptm.modificationType,
+                  type: 'known' as const,
+                  pubmedIds: ptm.pubmedIds,
+                }))
+              ]}
+              proteinSequence={protein.protein.sequence}
+            />
+          </div>
+        )}
       </div>
     </div>
   );
