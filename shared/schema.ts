@@ -17,6 +17,10 @@ export const ptmSites = pgTable("ptm_sites", {
   multiplicity: integer("multiplicity").default(1), // Number of modifications
   experimentName: text("experiment_name"), // Source experiment/file
   condition: text("condition"), // Experimental condition
+  // Ambiguity fields for handling multi-protein mappings
+  ambiguous: boolean("ambiguous").default(false), // True if peptide maps to multiple proteins
+  ambiguityGroupId: text("ambiguity_group_id"), // Groups duplicate entries from same input row
+  candidateUniprotIds: text("candidate_uniprot_ids").array(), // All possible protein mappings
 });
 
 // Protein sequences and metadata from UniProt
@@ -116,6 +120,11 @@ export const ProteinWithPTMs = z.object({
     siteProbability: z.number(),
     quantity: z.number().optional(),
     flankingRegion: z.string().optional(),
+    condition: z.string().optional(),
+    // Ambiguity fields
+    ambiguous: z.boolean().optional(),
+    ambiguityGroupId: z.string().optional(),
+    candidateUniprotIds: z.array(z.string()).optional(),
   })),
   knownPtms: z.array(z.object({
     siteLocation: z.number(),
