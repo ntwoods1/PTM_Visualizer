@@ -78,26 +78,34 @@ export default function PTMLollipopPlot({
       .attr('fill', '#666')
       .text(sequenceLength.toString());
 
-    // Consolidate PTM sites by position, modification type, and condition
-    const consolidatedSites = new Map<string, PTMSite>();
+    // Consolidate PTM sites by position, modification type, and type (no condition)
+    const consolidatedSites = new Map<string, PTMSite & { totalConditions: number, conditions: string[] }>();
     
     ptmSites.forEach(site => {
-      const key = `${site.siteLocation}_${site.modificationType}_${site.condition || 'unknown'}_${site.type}`;
+      const key = `${site.siteLocation}_${site.modificationType}_${site.type}`;
       const existing = consolidatedSites.get(key);
       
       if (existing) {
-        // Merge data from multiple peptides
+        // Merge data from multiple peptides and conditions
         existing.peptideCount = (existing.peptideCount || 1) + 1;
         existing.quantity = existing.quantity && site.quantity 
-          ? (existing.quantity + site.quantity) / 2  // Average quantities
+          ? (existing.quantity + site.quantity) / 2  // Average quantities across all conditions
           : existing.quantity || site.quantity;
         existing.siteProbability = existing.siteProbability && site.siteProbability
           ? Math.max(existing.siteProbability, site.siteProbability)  // Take highest probability
           : existing.siteProbability || site.siteProbability;
+        
+        // Track unique conditions
+        if (site.condition && !existing.conditions.includes(site.condition)) {
+          existing.conditions.push(site.condition);
+          existing.totalConditions = existing.conditions.length;
+        }
       } else {
         consolidatedSites.set(key, {
           ...site,
-          peptideCount: 1
+          peptideCount: 1,
+          totalConditions: site.condition ? 1 : 0,
+          conditions: site.condition ? [site.condition] : []
         });
       }
     });
@@ -156,14 +164,15 @@ export default function PTMLollipopPlot({
               .attr('r', site.type === 'experimental' ? 8 : 6)
               .attr('stroke-width', 3);
 
+            const siteWithConditions = site as PTMSite & { totalConditions: number, conditions: string[] };
             const tooltipContent = `
               <strong>${site.modificationType}</strong><br/>
               Position: ${position}${site.siteAA ? ` (${site.siteAA})` : ''}<br/>
               Type: ${site.type}<br/>
-              ${site.condition ? `Condition: ${site.condition}<br/>` : ''}
+              ${siteWithConditions.totalConditions > 0 ? `Conditions: ${siteWithConditions.totalConditions}<br/>` : ''}
               ${site.peptideCount && site.peptideCount > 1 ? `Peptides: ${site.peptideCount}<br/>` : ''}
               ${site.siteProbability ? `Probability: ${(site.siteProbability * 100).toFixed(1)}%<br/>` : ''}
-              ${site.quantity ? `Quantity: ${site.quantity.toFixed(2)}<br/>` : ''}
+              ${site.quantity ? `Avg Quantity: ${site.quantity.toFixed(2)}<br/>` : ''}
               ${site.pubmedIds && site.pubmedIds.length > 0 ? `PubMed IDs: ${site.pubmedIds.slice(0, 3).join(', ')}${site.pubmedIds.length > 3 ? '...' : ''}` : ''}
             `;
 
@@ -192,7 +201,7 @@ export default function PTMLollipopPlot({
 
     // Add modification type legend
     const legend = g.append('g')
-      .attr('transform', `translate(${plotWidth - 220}, 20)`);
+      .attr('transform', `translate(${plotWidth - 200}, 20)`);
 
     const legendData = Array.from(new Set(ptmSites.map(site => site.modificationType)));
     
@@ -224,30 +233,7 @@ export default function PTMLollipopPlot({
     const typeLegend = g.append('g')
       .attr('transform', `translate(20, 20)`);
 
-    // Add condition legend if multiple conditions exist
-    const conditions = Array.from(new Set(ptmSites.map(site => site.condition).filter(Boolean)));
-    if (conditions.length > 1) {
-      const conditionLegend = g.append('g')
-        .attr('transform', `translate(20, 70)`);
-      
-      conditionLegend.append('text')
-        .attr('x', 0)
-        .attr('y', -5)
-        .attr('font-size', '12px')
-        .attr('font-weight', 'bold')
-        .attr('fill', '#333')
-        .text('Conditions:');
-      
-      conditionLegend.selectAll('.condition-legend-item')
-        .data(conditions.slice(0, 5)) // Show first 5 conditions
-        .enter()
-        .append('text')
-        .attr('x', 0)
-        .attr('y', (d, i) => (i + 1) * 15)
-        .attr('font-size', '10px')
-        .attr('fill', '#666')
-        .text(d => d.length > 20 ? d.substring(0, 20) + '...' : d);
-    }
+    // Note: Condition details are now shown in the bar chart visualization
 
     const typeData = [
       { type: 'experimental', label: 'Experimental PTMs', r: 6, opacity: 1 },
