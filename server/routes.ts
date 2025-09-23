@@ -122,50 +122,72 @@ export async function registerRoutes(app: Express): Promise<Server> {
       for (let i = 0; i < ptmData.length; i++) {
         const row = ptmData[i];
         try {
-          const uniprotId = row["PTM.ProteinId"]?.trim();
-          if (!uniprotId) {
+          const proteinIdString = row["PTM.ProteinId"]?.trim();
+          if (!proteinIdString) {
             validationErrors.push({ row: i + 1, error: "Missing PTM.ProteinId" });
             continue;
           }
 
-          proteinIds.add(uniprotId);
+          // Split protein IDs by semicolon to handle ambiguous mappings
+          const candidateIds = proteinIdString
+            .split(';')
+            .map((id: string) => id.trim())
+            .filter((id: string) => id.length > 0);
 
-          // Create PTM site record
-          const ptmSite = {
-            sessionId,
-            uniprotId,
-            siteLocation: parseInt(row["PTM.SiteLocation"]),
-            siteAA: row["PTM.SiteAA"]?.trim() || "",
-            modificationType: row["PTM.ModificationTitle"]?.trim() || "",
-            siteProbability: parseFloat(row["PTM.SiteProbability"]) || 0,
-            quantity: row["PTM.Quantity"] ? parseFloat(row["PTM.Quantity"]) : null,
-            flankingRegion: row["PTM.FlankingRegion"]?.trim() || null,
-            multiplicity: row["PTM.Multiplicity"] ? parseInt(row["PTM.Multiplicity"]) : 1,
-            experimentName: row["R.FileName"]?.trim() || null,
-            condition: row["R.Condition"]?.trim() || null,
-          };
+          if (candidateIds.length === 0) {
+            validationErrors.push({ row: i + 1, error: "No valid protein IDs found" });
+            continue;
+          }
 
-          const validatedPtm = insertPtmSiteSchema.parse(ptmSite);
-          await storage.createPTMSite(validatedPtm);
-          processedSites++;
+          // Generate unique ambiguity group ID for this input row
+          const ambiguityGroupId = `amb_${sessionId}_${i}`;
+          const isAmbiguous = candidateIds.length > 1;
 
-          // Create or update protein record if not exists
-          const existingProtein = await storage.getProtein(uniprotId, sessionId);
-          if (!existingProtein) {
-            const proteinData = {
+          // Create PTM site entry for each candidate protein
+          for (const uniprotId of candidateIds) {
+            proteinIds.add(uniprotId);
+
+            // Create PTM site record with ambiguity metadata
+            const ptmSite = {
               sessionId,
               uniprotId,
-              proteinName: row["PG.ProteinNames"]?.split(";")[0]?.trim() || null,
-              geneName: row["PG.Genes"]?.split(";")[0]?.trim() || null,
-              organism: row["PG.Organisms"]?.trim() || "Homo sapiens",
-              sequence: null,
-              sequenceLength: null,
-              description: null,
-              lastUpdated: null,
+              siteLocation: parseInt(row["PTM.SiteLocation"]),
+              siteAA: row["PTM.SiteAA"]?.trim() || "",
+              modificationType: row["PTM.ModificationTitle"]?.trim() || "",
+              siteProbability: parseFloat(row["PTM.SiteProbability"]) || 0,
+              quantity: row["PTM.Quantity"] ? parseFloat(row["PTM.Quantity"]) : null,
+              flankingRegion: row["PTM.FlankingRegion"]?.trim() || null,
+              multiplicity: row["PTM.Multiplicity"] ? parseInt(row["PTM.Multiplicity"]) : 1,
+              experimentName: row["R.FileName"]?.trim() || null,
+              condition: row["R.Condition"]?.trim() || null,
+              // Ambiguity fields
+              ambiguous: isAmbiguous,
+              ambiguityGroupId: isAmbiguous ? ambiguityGroupId : null,
+              candidateUniprotIds: isAmbiguous ? candidateIds : null,
             };
 
-            const validatedProtein = insertProteinSchema.parse(proteinData);
-            await storage.createProtein(validatedProtein);
+            const validatedPtm = insertPtmSiteSchema.parse(ptmSite);
+            await storage.createPTMSite(validatedPtm);
+            processedSites++;
+
+            // Create or update protein record if not exists
+            const existingProtein = await storage.getProtein(uniprotId, sessionId);
+            if (!existingProtein) {
+              const proteinData = {
+                sessionId,
+                uniprotId,
+                proteinName: row["PG.ProteinNames"]?.split(";")[0]?.trim() || null,
+                geneName: row["PG.Genes"]?.split(";")[0]?.trim() || null,
+                organism: row["PG.Organisms"]?.trim() || "Homo sapiens",
+                sequence: null,
+                sequenceLength: null,
+                description: null,
+                lastUpdated: null,
+              };
+
+              const validatedProtein = insertProteinSchema.parse(proteinData);
+              await storage.createProtein(validatedProtein);
+            }
           }
         } catch (error) {
           console.error("Error processing PTM site:", error, row);

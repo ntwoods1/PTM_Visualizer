@@ -70,6 +70,10 @@ export class MemStorage implements IStorage {
       multiplicity: insertPtmSite.multiplicity ?? null,
       experimentName: insertPtmSite.experimentName ?? null,
       condition: insertPtmSite.condition ?? null,
+      // Handle ambiguity fields with proper defaults
+      ambiguous: insertPtmSite.ambiguous ?? false,
+      ambiguityGroupId: insertPtmSite.ambiguityGroupId ?? null,
+      candidateUniprotIds: insertPtmSite.candidateUniprotIds ?? null,
     };
     this.ptmSites.set(id, ptmSite);
     return ptmSite;
@@ -272,6 +276,10 @@ export class MemStorage implements IStorage {
         quantity: ptm.quantity || undefined,
         flankingRegion: ptm.flankingRegion || undefined,
         condition: ptm.condition || undefined,
+        // Ambiguity fields
+        ambiguous: ptm.ambiguous || undefined,
+        ambiguityGroupId: ptm.ambiguityGroupId || undefined,
+        candidateUniprotIds: ptm.candidateUniprotIds || undefined,
       })),
       knownPtms: knownPtms.map(ptm => ({
         siteLocation: ptm.siteLocation,
@@ -333,6 +341,10 @@ export class MemStorage implements IStorage {
             quantity: ptm.quantity || undefined,
             flankingRegion: ptm.flankingRegion || undefined,
             condition: ptm.condition || undefined,
+            // Ambiguity fields
+            ambiguous: ptm.ambiguous || undefined,
+            ambiguityGroupId: ptm.ambiguityGroupId || undefined,
+            candidateUniprotIds: ptm.candidateUniprotIds || undefined,
           })),
           knownPtms: knownPtms.map((ptm: KnownPTM) => ({
             siteLocation: ptm.siteLocation,
@@ -372,7 +384,18 @@ export class MemStorage implements IStorage {
     }
     
     const typeCounts = new Map<string, number>();
+    const seenAmbiguousGroups = new Set<string>();
+    
     for (const ptm of ptms) {
+      // For ambiguous PTM sites, only count once per ambiguity group
+      if (ptm.ambiguous && ptm.ambiguityGroupId) {
+        const groupKey = `${ptm.ambiguityGroupId}_${ptm.modificationType}`;
+        if (seenAmbiguousGroups.has(groupKey)) {
+          continue; // Skip duplicate from same ambiguity group
+        }
+        seenAmbiguousGroups.add(groupKey);
+      }
+      
       const current = typeCounts.get(ptm.modificationType) || 0;
       typeCounts.set(ptm.modificationType, current + 1);
     }
