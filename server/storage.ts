@@ -259,6 +259,7 @@ export class MemStorage implements IStorage {
         siteProbability: ptm.siteProbability,
         quantity: ptm.quantity || undefined,
         flankingRegion: ptm.flankingRegion || undefined,
+        condition: ptm.condition || undefined,
       })),
       knownPtms: knownPtms.map(ptm => ({
         siteLocation: ptm.siteLocation,
@@ -318,6 +319,7 @@ export class MemStorage implements IStorage {
             siteProbability: ptm.siteProbability,
             quantity: ptm.quantity || undefined,
             flankingRegion: ptm.flankingRegion || undefined,
+            condition: ptm.condition || undefined,
           })),
           knownPtms: knownPtms.map(ptm => ({
             siteLocation: ptm.siteLocation,
