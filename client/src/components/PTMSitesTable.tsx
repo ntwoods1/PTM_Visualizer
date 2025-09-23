@@ -5,8 +5,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Download, Filter } from "lucide-react";
+import { Download, Filter, BarChart3 } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
 interface PTMSite {
   siteLocation: number;
@@ -18,6 +19,17 @@ interface PTMSite {
   condition?: string;
   flankingRegion?: string;
   pubmedIds?: string[];
+}
+
+interface ConsolidatedPTMSite extends PTMSite {
+  peptideCount: number;
+  conditionQuantities: Array<{
+    condition: string;
+    quantitySum: number;
+    quantityCount: number;
+    quantity: number | null; // computed from sum/count
+    peptideCount: number;
+  }>;
 }
 
 interface PTMSitesTableProps {
@@ -35,32 +47,66 @@ export default function PTMSitesTable({ ptmSites, proteinSequence }: PTMSitesTab
   const conditions = Array.from(new Set(ptmSites.map(site => site.condition).filter(Boolean)));
   const modTypes = Array.from(new Set(ptmSites.map(site => site.modificationType)));
 
-  // Consolidate sites by position, modification type, and condition
-  const consolidatedSites = new Map<string, PTMSite & { peptideCount: number }>();
+  // Consolidate sites by position, modification type, and type (experimental/known)
+  // but preserve condition-specific data
+  const consolidatedSites = new Map<string, ConsolidatedPTMSite>();
   
   ptmSites.forEach(site => {
-    const key = `${site.siteLocation}_${site.modificationType}_${site.condition || 'unknown'}_${site.type}`;
+    const key = `${site.siteLocation}_${site.modificationType}_${site.type}`;
     const existing = consolidatedSites.get(key);
     
     if (existing) {
+      // Update overall stats
       existing.peptideCount += 1;
-      existing.quantity = existing.quantity && site.quantity 
-        ? (existing.quantity + site.quantity) / 2
-        : existing.quantity || site.quantity;
       existing.siteProbability = existing.siteProbability && site.siteProbability
         ? Math.max(existing.siteProbability, site.siteProbability)
         : existing.siteProbability || site.siteProbability;
+      
+      // Add condition-specific quantity
+      const conditionEntry = existing.conditionQuantities.find(
+        cq => cq.condition === (site.condition || 'Unknown')
+      );
+      
+      if (conditionEntry) {
+        conditionEntry.peptideCount += 1;
+        if (site.quantity !== undefined && site.quantity !== null) {
+          conditionEntry.quantitySum += site.quantity;
+          conditionEntry.quantityCount += 1;
+          conditionEntry.quantity = conditionEntry.quantitySum / conditionEntry.quantityCount;
+        }
+      } else {
+        const quantity = site.quantity ?? null;
+        existing.conditionQuantities.push({
+          condition: site.condition || 'Unknown',
+          quantitySum: quantity ?? 0,
+          quantityCount: quantity !== null ? 1 : 0,
+          quantity: quantity,
+          peptideCount: 1
+        });
+      }
     } else {
+      const quantity = site.quantity ?? null;
       consolidatedSites.set(key, {
         ...site,
-        peptideCount: 1
+        peptideCount: 1,
+        conditionQuantities: [{
+          condition: site.condition || 'Unknown',
+          quantitySum: quantity ?? 0,
+          quantityCount: quantity !== null ? 1 : 0,
+          quantity: quantity,
+          peptideCount: 1
+        }]
       });
     }
   });
 
   // Apply filters
   const filteredSites = Array.from(consolidatedSites.values()).filter(site => {
-    if (selectedCondition !== 'all' && site.condition !== selectedCondition) return false;
+    if (selectedCondition !== 'all') {
+      // Check if this PTM site has data for the selected condition
+      const hasCondition = site.conditionQuantities.some(cq => cq.condition === selectedCondition);
+      if (!hasCondition) return false;
+    }
     if (selectedModType !== 'all' && site.modificationType !== selectedModType) return false;
     if (selectedDataType !== 'all' && site.type !== selectedDataType) return false;
     return true;
@@ -82,8 +128,8 @@ export default function PTMSitesTable({ ptmSites, proteinSequence }: PTMSitesTab
   // Export functionality
   const exportToCSV = () => {
     const headers = [
-      'Position', 'Amino Acid', 'Modification Type', 'Type', 'Condition', 
-      'Peptide Count', 'Probability', 'Quantity', 'Sequence Window', 'PubMed IDs'
+      'Position', 'Amino Acid', 'Modification Type', 'Type', 'Conditions', 
+      'Peptide Count', 'Probability', 'Condition Quantities', 'Sequence Window', 'PubMed IDs'
     ];
     
     const csvData = filteredSites.map(site => [
@@ -91,10 +137,10 @@ export default function PTMSitesTable({ ptmSites, proteinSequence }: PTMSitesTab
       site.siteAA || 'N/A',
       site.modificationType,
       site.type,
-      site.condition || 'N/A',
+      site.conditionQuantities.map(cq => cq.condition).join('; '),
       site.peptideCount,
       site.siteProbability ? (site.siteProbability * 100).toFixed(1) + '%' : 'N/A',
-      site.quantity ? site.quantity.toFixed(2) : 'N/A',
+      site.conditionQuantities.map(cq => `${cq.condition}: ${cq.quantity?.toFixed(2) || 'N/A'}`).join('; '),
       getSequenceWindow(site.siteLocation, proteinSequence),
       site.pubmedIds?.join('; ') || 'N/A'
     ]);
@@ -224,7 +270,7 @@ export default function PTMSitesTable({ ptmSites, proteinSequence }: PTMSitesTab
                 {conditions.length > 1 && <TableHead>Condition</TableHead>}
                 <TableHead className="w-20">Peptides</TableHead>
                 <TableHead className="w-20">Probability</TableHead>
-                <TableHead className="w-20">Quantity</TableHead>
+                <TableHead className="w-24">Quantities</TableHead>
                 <TableHead>Sequence Window</TableHead>
                 <TableHead>References</TableHead>
               </TableRow>
@@ -241,7 +287,7 @@ export default function PTMSitesTable({ ptmSites, proteinSequence }: PTMSitesTab
                 </TableRow>
               ) : (
                 filteredSites.map((site, index) => (
-                  <TableRow key={index} data-testid={`row-ptm-site-${site.siteLocation}`}>
+                  <TableRow key={`${site.siteLocation}-${site.modificationType}-${site.type}`} data-testid={`row-ptm-site-${site.siteLocation}-${site.modificationType.replace(/\s+/g, '-')}-${site.type}`}>
                     <TableCell className="font-mono">{site.siteLocation}</TableCell>
                     <TableCell className="font-mono font-bold">
                       {site.siteAA || 'N/A'}
@@ -261,7 +307,12 @@ export default function PTMSitesTable({ ptmSites, proteinSequence }: PTMSitesTab
                     </TableCell>
                     {conditions.length > 1 && (
                       <TableCell className="text-xs max-w-32 truncate">
-                        {site.condition || 'N/A'}
+                        {selectedCondition !== 'all' 
+                          ? selectedCondition
+                          : site.conditionQuantities.length > 1 
+                            ? `Multiple (${site.conditionQuantities.length})`
+                            : site.conditionQuantities[0]?.condition || 'N/A'
+                        }
                       </TableCell>
                     )}
                     <TableCell className="text-center">
@@ -277,7 +328,55 @@ export default function PTMSitesTable({ ptmSites, proteinSequence }: PTMSitesTab
                       {site.siteProbability ? `${(site.siteProbability * 100).toFixed(1)}%` : 'N/A'}
                     </TableCell>
                     <TableCell className="text-center">
-                      {site.quantity ? site.quantity.toFixed(2) : 'N/A'}
+                      <Dialog>
+                        <DialogTrigger asChild>
+                          <Button 
+                            variant="outline" 
+                            size="sm"
+                            className="h-7 px-2"
+                            data-testid={`button-view-quantities-${site.siteLocation}-${site.modificationType.replace(/\s+/g, '-')}-${site.type}`}
+                          >
+                            <BarChart3 className="h-3 w-3 mr-1" />
+                            View
+                          </Button>
+                        </DialogTrigger>
+                        <DialogContent className="max-w-md">
+                          <DialogHeader>
+                            <DialogTitle>
+                              Quantities by Condition
+                            </DialogTitle>
+                            <DialogDescription>
+                              Position {site.siteLocation} ({site.siteAA}) - {site.modificationType}
+                            </DialogDescription>
+                          </DialogHeader>
+                          <div className="space-y-3">
+                            {site.conditionQuantities
+                              .sort((a, b) => a.condition.localeCompare(b.condition))
+                              .map((cq, index) => (
+                              <div key={index} className="flex items-center justify-between p-3 bg-muted/20 rounded-lg">
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium truncate">
+                                    {cq.condition}
+                                  </p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {cq.peptideCount} peptide{cq.peptideCount !== 1 ? 's' : ''}
+                                  </p>
+                                </div>
+                                <div className="text-right">
+                                  <p className="text-sm font-mono">
+                                    {cq.quantity !== null ? cq.quantity.toFixed(2) : 'N/A'}
+                                  </p>
+                                </div>
+                              </div>
+                            ))}
+                            {site.conditionQuantities.length === 0 && (
+                              <p className="text-center text-muted-foreground text-sm py-4">
+                                No quantity data available
+                              </p>
+                            )}
+                          </div>
+                        </DialogContent>
+                      </Dialog>
                     </TableCell>
                     <TableCell className="font-mono text-xs">
                       {getSequenceWindow(site.siteLocation, proteinSequence)}
