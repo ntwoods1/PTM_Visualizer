@@ -6,7 +6,8 @@ import { z } from "zod";
 // PTM Site data from experimental TSV files
 export const ptmSites = pgTable("ptm_sites", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  proteinId: text("protein_id").notNull(), // UniProt ID (PTM.ProteinId)
+  sessionId: text("session_id").notNull(), // References analysisSessions.id
+  uniprotId: text("uniprot_id").notNull(), // UniProt ID (PTM.ProteinId)
   siteLocation: integer("site_location").notNull(), // Position on protein
   siteAA: text("site_aa").notNull(), // Amino acid (C, M, S, T, Y, etc.)
   modificationType: text("modification_type").notNull(), // Carbamidomethyl (C), Oxidation (M), etc.
@@ -21,7 +22,8 @@ export const ptmSites = pgTable("ptm_sites", {
 // Protein sequences and metadata from UniProt
 export const proteins = pgTable("proteins", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  uniprotId: text("uniprot_id").notNull().unique(), // Primary UniProt accession
+  sessionId: text("session_id").notNull(), // References analysisSessions.id
+  uniprotId: text("uniprot_id").notNull(), // Primary UniProt accession
   proteinName: text("protein_name"), // Human-readable name
   geneName: text("gene_name"), // Gene symbol
   organism: text("organism").default("Homo sapiens"),
@@ -34,7 +36,7 @@ export const proteins = pgTable("proteins", {
 // Known PTM annotations from PhosphoSitePlus
 export const knownPtms = pgTable("known_ptms", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  proteinId: text("protein_id").notNull(), // UniProt ID
+  uniprotId: text("uniprot_id").notNull(), // UniProt ID
   siteLocation: integer("site_location").notNull(), // Position on protein
   modificationType: text("modification_type").notNull(), // Type of PTM
   organism: text("organism").default("human"),
