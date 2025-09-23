@@ -152,7 +152,7 @@ export function FileUpload() {
                       Drag & drop a TSV file here, or click to select
                     </p>
                     <p className="text-sm text-muted-foreground">
-                      Supports .tsv files up to 50MB
+                      Supports .tsv files up to 200MB
                     </p>
                   </>
                 )}
