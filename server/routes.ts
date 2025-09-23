@@ -293,7 +293,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get all proteins in a session
   app.get("/api/sessions/:sessionId/proteins", async (req, res) => {
     try {
+      console.log(`[DEBUG] Getting proteins for session: ${req.params.sessionId}`);
       const proteins = await storage.getProteinsInSession(req.params.sessionId);
+      console.log(`[DEBUG] Found ${proteins.length} proteins`);
       res.json(proteins);
     } catch (error) {
       console.error("Error fetching session proteins:", error);
@@ -323,7 +325,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get PTM types summary for a session
   app.get("/api/sessions/:sessionId/ptm-summary", async (req, res) => {
     try {
+      console.log(`[DEBUG] Getting PTM summary for session: ${req.params.sessionId}`);
       const summary = await storage.getPTMTypesSummary(req.params.sessionId);
+      console.log(`[DEBUG] Found ${summary.length} PTM types:`, summary);
       res.json(summary);
     } catch (error) {
       console.error("Error fetching PTM summary:", error);
