@@ -27,26 +27,34 @@ export default function Dashboard() {
 
   // Fetch proteins in current session
   const { data: proteins, isLoading: proteinsLoading } = useQuery({
-    queryKey: ['/api/sessions', currentSession?.id, 'proteins'],
-    enabled: !!currentSession,
+    queryKey: [`/api/sessions/${currentSession?.id}/proteins`],
+    enabled: !!currentSession?.id,
   });
 
   // Fetch PTM types summary
   const { data: ptmSummary, isLoading: summaryLoading } = useQuery({
-    queryKey: ['/api/sessions', currentSession?.id, 'ptm-summary'],
-    enabled: !!currentSession,
+    queryKey: [`/api/sessions/${currentSession?.id}/ptm-summary`],
+    enabled: !!currentSession?.id,
   });
 
   // Process proteins data for display
   const proteinSummaries = useMemo(() => {
     if (!proteins || !Array.isArray(proteins)) return [];
     
-    return proteins.map((protein: Protein) => ({
-      ...protein,
-      ptmCount: 0, // Will be populated from individual protein data
-      ptmTypes: [],
-      averageProbability: 0
-    })) as ProteinSummary[];
+    return proteins.map((proteinWithPtms: any) => {
+      const protein = proteinWithPtms.protein;
+      const experimentalPtms = proteinWithPtms.experimentalPtms || [];
+      const uniquePtmTypes = Array.from(new Set(experimentalPtms.map((ptm: any) => ptm.modificationType)));
+      
+      return {
+        ...protein,
+        ptmCount: experimentalPtms.length,
+        ptmTypes: uniquePtmTypes,
+        averageProbability: experimentalPtms.length > 0 
+          ? experimentalPtms.reduce((sum: number, ptm: any) => sum + (ptm.siteProbability || 0), 0) / experimentalPtms.length 
+          : 0
+      };
+    }) as ProteinSummary[];
   }, [proteins]);
 
   // Filter and search proteins
@@ -189,7 +197,7 @@ export default function Dashboard() {
             </CardHeader>
             <CardContent>
               <div className="flex flex-wrap gap-2">
-                {ptmSummary.map((ptm: any, index: number) => {
+                {(ptmSummary as any[]).map((ptm: any, index: number) => {
                   return (
                     <Badge 
                       key={ptm.modificationType} 
