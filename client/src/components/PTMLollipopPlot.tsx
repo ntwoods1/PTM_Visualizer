@@ -190,26 +190,31 @@ export default function PTMLollipopPlot({
           ? Math.max(existing.siteProbability, site.siteProbability)  // Take highest probability
           : existing.siteProbability || site.siteProbability;
         
-        // Track unique conditions
-        if (site.condition && !existing.conditions.includes(site.condition)) {
-          existing.conditions.push(site.condition);
+        // Track unique conditions - only count conditions with quantitative evidence
+        if (site.condition && site.condition.trim() !== '' && site.quantity != null && isFinite(site.quantity)) {
+          if (!existing.conditions.includes(site.condition)) {
+            existing.conditions.push(site.condition);
+          }
           existing.totalConditions = existing.conditions.length;
         }
       } else {
+        const hasQuantitativeEvidence = site.condition && site.condition.trim() !== '' && site.quantity != null && isFinite(site.quantity);
+        const initialConditions = hasQuantitativeEvidence ? [site.condition] : [];
         consolidatedSites.set(key, {
           ...site,
           peptideCount: 1,
-          totalConditions: site.condition ? 1 : 0,
-          conditions: site.condition ? [site.condition] : []
+          totalConditions: initialConditions.length,
+          conditions: initialConditions
         });
       }
     });
-
+    
     // Group consolidated sites by position for visualization
     const groupedSites = d3.group(Array.from(consolidatedSites.values()), d => d.siteLocation);
     
-    // Calculate height scale based on condition count
-    const maxConditions = Math.max(...Array.from(consolidatedSites.values()).map(site => site.totalConditions || 1));
+    // Calculate height scale based on condition count range
+    const allConditionCounts = Array.from(consolidatedSites.values()).map(site => site.totalConditions || 1);
+    const maxConditions = Math.max(...allConditionCounts);
     const heightScale = d3.scaleLinear()
       .domain([1, maxConditions])
       .range([30, 80]) // Min height 30px, max height 80px
@@ -235,9 +240,11 @@ export default function PTMLollipopPlot({
       sites.forEach((site, index) => {
         const siteWithConditions = site as PTMSite & { totalConditions: number, conditions: string[] };
         // Base height on condition count, with stacking for multiple modifications at same position
-        const baseHeight = heightScale(Math.max(siteWithConditions.totalConditions || 1, 1));
+        const conditionCount = Math.max(siteWithConditions.totalConditions || 1, 1);
+        const baseHeight = heightScale(conditionCount);
         const stackOffset = index * 15; // Stack overlapping sites
         const lollipopHeight = Math.min(baseHeight + stackOffset, plotHeight - 60);
+        
         
         // Draw stick
         g.append('line')
