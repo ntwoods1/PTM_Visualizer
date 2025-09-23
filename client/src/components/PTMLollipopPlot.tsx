@@ -73,9 +73,28 @@ export default function PTMLollipopPlot({
 
     // Draw protein domains as boxes on the sequence line
     if (domains && domains.length > 0) {
-      const domainColorScale = d3.scaleOrdinal<string>()
-        .domain(domains.map(d => d.type))
-        .range(['#e6f3ff', '#ccebff', '#99d6ff', '#66c2ff', '#33adff', '#0099ff']);
+      // Create specific color mapping for Domain vs Region types
+      const getDomainColor = (domainType: string) => {
+        switch (domainType.toLowerCase()) {
+          case 'domain':
+            return '#3b82f6'; // Blue for domains
+          case 'region':
+            return '#10b981'; // Green for regions
+          default:
+            return '#6b7280'; // Gray for unknown types
+        }
+      };
+      
+      const getDomainFillColor = (domainType: string) => {
+        switch (domainType.toLowerCase()) {
+          case 'domain':
+            return '#dbeafe'; // Light blue fill for domains
+          case 'region':
+            return '#d1fae5'; // Light green fill for regions
+          default:
+            return '#f3f4f6'; // Light gray for unknown types
+        }
+      };
 
       domains.forEach((domain, index) => {
         const domainStart = xScale(domain.start);
@@ -89,8 +108,8 @@ export default function PTMLollipopPlot({
             .attr('y', plotHeight - 48)
             .attr('width', domainWidth)
             .attr('height', 16)
-            .attr('fill', domainColorScale(domain.type))
-            .attr('stroke', '#4a90e2')
+            .attr('fill', getDomainFillColor(domain.type))
+            .attr('stroke', getDomainColor(domain.type))
             .attr('stroke-width', 1)
             .attr('opacity', 0.7)
             .style('cursor', 'pointer')
@@ -188,6 +207,13 @@ export default function PTMLollipopPlot({
 
     // Group consolidated sites by position for visualization
     const groupedSites = d3.group(Array.from(consolidatedSites.values()), d => d.siteLocation);
+    
+    // Calculate height scale based on condition count
+    const maxConditions = Math.max(...Array.from(consolidatedSites.values()).map(site => site.totalConditions || 1));
+    const heightScale = d3.scaleLinear()
+      .domain([1, maxConditions])
+      .range([30, 80]) // Min height 30px, max height 80px
+      .clamp(true);
 
     // Create tooltip
     const tooltip = d3.select('body').append('div')
@@ -207,8 +233,11 @@ export default function PTMLollipopPlot({
       const x = xScale(position);
       
       sites.forEach((site, index) => {
-        const yOffset = 20 + (index * 15); // Stack overlapping sites
-        const lollipopHeight = Math.min(yOffset + 40, plotHeight - 60);
+        const siteWithConditions = site as PTMSite & { totalConditions: number, conditions: string[] };
+        // Base height on condition count, with stacking for multiple modifications at same position
+        const baseHeight = heightScale(Math.max(siteWithConditions.totalConditions || 1, 1));
+        const stackOffset = index * 15; // Stack overlapping sites
+        const lollipopHeight = Math.min(baseHeight + stackOffset, plotHeight - 60);
         
         // Draw stick
         g.append('line')
