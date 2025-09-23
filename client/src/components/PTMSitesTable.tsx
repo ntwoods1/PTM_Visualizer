@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Download, Filter, BarChart3 } from "lucide-react";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 
@@ -44,7 +45,7 @@ export default function PTMSitesTable({ ptmSites, proteinSequence }: PTMSitesTab
   const [selectedDataType, setSelectedDataType] = useState<string>('all');
 
   // Get unique values for filtering
-  const conditions = Array.from(new Set(ptmSites.map(site => site.condition).filter(Boolean)));
+  const conditions = Array.from(new Set(ptmSites.map(site => site.condition).filter((v): v is string => !!v)));
   const modTypes = Array.from(new Set(ptmSites.map(site => site.modificationType)));
 
   // Consolidate sites by position, modification type, and type (experimental/known)
@@ -340,7 +341,7 @@ export default function PTMSitesTable({ ptmSites, proteinSequence }: PTMSitesTab
                             View
                           </Button>
                         </DialogTrigger>
-                        <DialogContent className="max-w-md">
+                        <DialogContent className="max-w-2xl">
                           <DialogHeader>
                             <DialogTitle>
                               Quantities by Condition
@@ -349,31 +350,84 @@ export default function PTMSitesTable({ ptmSites, proteinSequence }: PTMSitesTab
                               Position {site.siteLocation} ({site.siteAA}) - {site.modificationType}
                             </DialogDescription>
                           </DialogHeader>
-                          <div className="space-y-3">
-                            {site.conditionQuantities
-                              .sort((a, b) => a.condition.localeCompare(b.condition))
-                              .map((cq, index) => (
-                              <div key={index} className="flex items-center justify-between p-3 bg-muted/20 rounded-lg">
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-sm font-medium truncate">
-                                    {cq.condition}
-                                  </p>
-                                  <p className="text-xs text-muted-foreground">
-                                    {cq.peptideCount} peptide{cq.peptideCount !== 1 ? 's' : ''}
-                                  </p>
-                                </div>
-                                <div className="text-right">
-                                  <p className="text-sm font-mono">
-                                    {cq.quantity !== null ? cq.quantity.toFixed(2) : 'N/A'}
-                                  </p>
-                                </div>
-                              </div>
-                            ))}
-                            {site.conditionQuantities.length === 0 && (
-                              <p className="text-center text-muted-foreground text-sm py-4">
-                                No quantity data available
-                              </p>
-                            )}
+                          <div className="w-full h-80" data-testid={`chart-quantities-${site.siteLocation}-${site.modificationType.replace(/\s+/g, '-')}-${site.type}`}>
+                            {(() => {
+                              const chartData = site.conditionQuantities
+                                .filter(cq => cq.quantity !== null && cq.condition)
+                                .sort((a, b) => (b.quantity || 0) - (a.quantity || 0))
+                                .map((cq, index) => {
+                                  const condition = cq.condition || 'Unknown';
+                                  return {
+                                    id: `condition-${index}`,
+                                    condition: condition,
+                                    shortCondition: condition.length > 15 ? condition.substring(0, 15) + '...' : condition,
+                                    quantity: cq.quantity || 0,
+                                    peptideCount: cq.peptideCount
+                                  };
+                                });
+                              
+                              if (chartData.length === 0) {
+                                return (
+                                  <div className="flex items-center justify-center h-full">
+                                    <p className="text-center text-muted-foreground text-sm">
+                                      No quantity data available
+                                    </p>
+                                  </div>
+                                );
+                              }
+                              
+                              return (
+                                <ResponsiveContainer width="100%" height="100%">
+                                  <BarChart
+                                    data={chartData}
+                                    margin={{ top: 20, right: 30, left: 20, bottom: 60 }}
+                                  >
+                                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" strokeOpacity={0.3} />
+                                    <XAxis 
+                                      dataKey="shortCondition"
+                                      angle={-45}
+                                      textAnchor="end"
+                                      height={80}
+                                      tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }}
+                                      axisLine={{ stroke: 'hsl(var(--border))' }}
+                                      tickLine={{ stroke: 'hsl(var(--border))' }}
+                                    />
+                                    <YAxis 
+                                      tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 11 }}
+                                      axisLine={{ stroke: 'hsl(var(--border))' }}
+                                      tickLine={{ stroke: 'hsl(var(--border))' }}
+                                    />
+                                    <Tooltip
+                                      content={({ active, payload, label }) => {
+                                        if (active && payload && payload.length) {
+                                          const data = payload[0].payload;
+                                          return (
+                                            <div className="bg-background/95 border rounded-lg p-3 shadow-lg backdrop-blur supports-[backdrop-filter]:bg-background/95">
+                                              <p className="font-medium text-sm mb-1">
+                                                {data.condition}
+                                              </p>
+                                              <p className="text-sm text-muted-foreground">
+                                                Quantity: <span className="font-mono">{data.quantity.toFixed(2)}</span>
+                                              </p>
+                                              <p className="text-sm text-muted-foreground">
+                                                {data.peptideCount} peptide{data.peptideCount !== 1 ? 's' : ''}
+                                              </p>
+                                            </div>
+                                          );
+                                        }
+                                        return null;
+                                      }}
+                                    />
+                                    <Bar 
+                                      dataKey="quantity" 
+                                      fill="hsl(var(--primary))" 
+                                      radius={[4, 4, 0, 0]}
+                                      className="hover:opacity-80 transition-opacity"
+                                    />
+                                  </BarChart>
+                                </ResponsiveContainer>
+                              );
+                            })()} 
                           </div>
                         </DialogContent>
                       </Dialog>
