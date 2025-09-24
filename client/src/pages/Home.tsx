@@ -256,7 +256,7 @@ export default function Home() {
                       <Label htmlFor="session-name-2">Session Name</Label>
                       <Input
                         id="session-name-2"
-                        placeholder="e.g., SNAI1 IP Analysis"
+                        placeholder="e.g., PTMs in PDAC"
                         value={newSessionName}
                         onChange={(e) => setNewSessionName(e.target.value)}
                         onKeyDown={(e) => e.key === 'Enter' && handleCreateSession()}
